@@ -97,7 +97,6 @@
         }
         button.delete-btn:hover { background: #e74c3c; color: white; }
 
-        /* Скрытый инпут для выбора файла копии */
         #backupFileInput { display: none; }
 
         .table-container {
@@ -113,10 +112,6 @@
         
         .type-purchase { color: #2ecc71; }
         .type-sale { color: #3498db; }
-        
-        tr[draggable="true"] { cursor: grab; }
-        tr[draggable="true"]:hover { background: #252525; }
-        tr.dragging { opacity: 0.3; background: #333 !important; }
     </style>
 </head>
 <body>
@@ -143,7 +138,6 @@
     </div>
 
     <div class="controls-group">
-        <!-- Форма добавления товаров -->
         <div class="form-group">
             <input type="text" id="itemName" placeholder="Название товара">
             <input type="number" id="itemPrice" placeholder="Цена (₽)">
@@ -154,7 +148,6 @@
             <button onclick="addItem()">Добавить</button>
         </div>
 
-        <!-- Кнопки управления памятью -->
         <div class="backup-group">
             <button class="backup-btn" onclick="downloadBackup()">Скачать копию</button>
             <button class="backup-btn" onclick="document.getElementById('backupFileInput').click()">Загрузить копию</button>
@@ -184,18 +177,21 @@
         let items = JSON.parse(localStorage.getItem('accounting_items')) || [];
 
         function calculatePercent() {
-            const price = parseFloat(document.getElementById('calcPrice').value) || 0;
-            const percent = parseFloat(document.getElementById('calcPercent').value) || 0;
+            const priceInput = document.getElementById('calcPrice');
+            const percentInput = document.getElementById('calcPercent');
+            const resultDiv = document.getElementById('calcResult');
+
+            if (!priceInput || !percentInput || !resultDiv) return;
+
+            const price = parseFloat(priceInput.value) || 0;
+            const percent = parseFloat(percentInput.value) || 0;
             
             if (price > 0) {
-                const absolutePercent = Math.abs(percent);
-                const discount = (price * absolutePercent) / 100;
+                const discount = (price * Math.abs(percent)) / 100;
                 const total = price - discount;
-                
-                document.getElementById('calcResult').style.color = '#e74c3c';
-                document.getElementById('calcResult').innerText = `Итог: ${total.toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
+                resultDiv.innerText = `Итог: ${total.toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
             } else {
-                document.getElementById('calcResult').innerText = 'Итог: 0 ₽';
+                resultDiv.innerText = 'Итог: 0 ₽';
             }
         }
 
@@ -205,12 +201,14 @@
 
         function render() {
             const tableBody = document.getElementById('table-body');
+            if (!tableBody) return;
+            
             tableBody.innerHTML = '';
 
             let spent = 0;
             let sold = 0;
 
-            items.forEach((item, index) => {
+            items.forEach((item) => {
                 if (item.type === 'Покупка') {
                     spent += item.price;
                 } else {
@@ -218,7 +216,7 @@
                 }
 
                 tableBody.innerHTML += `
-                    <tr draggable="true" data-index="${index}">
+                    <tr>
                         <td>${item.name}</td>
                         <td class="${item.type === 'Покупка' ? 'type-purchase' : 'type-sale'}">${item.type}</td>
                         <td style="color: #888; font-size: 14px;">${item.time}</td>
@@ -235,14 +233,14 @@
             
             const profit = sold - spent;
             document.getElementById('total-profit').innerText = `${profit.toLocaleString('ru-RU')} ₽`;
-
-            initDragAndDrop();
         }
 
         function addItem() {
             const nameInput = document.getElementById('itemName');
             const priceInput = document.getElementById('itemPrice');
             const typeSelect = document.getElementById('itemType');
+
+            if (!nameInput || !priceInput || !typeSelect) return;
 
             if (!nameInput.value || !priceInput.value) {
                 alert('Заполните все поля!');
@@ -282,5 +280,12 @@
             }
         }
 
-        // Функция скачивания резервной копии (JSON файл)
         function downloadBackup() {
+            if (items.length === 0) {
+                alert('Таблица пуста, сохранять нечего!');
+                return;
+            }
+            const dataStr = JSON.stringify(items, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
