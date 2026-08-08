@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Учёт товаров</title>
+    <title>Учёт товаров (Облако)</title>
     <style>
         body { 
             margin: 0;
@@ -49,12 +49,7 @@
         .calc-inputs input { width: 80px; }
         .calc-result { margin-top: 10px; font-size: 15px; color: #e74c3c; font-weight: bold; min-height: 18px; }
 
-        .form-group { 
-            display: flex; 
-            gap: 10px; 
-            margin-bottom: 20px; 
-            flex-wrap: wrap;
-        }
+        .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         
         input, select { 
             background: #1e1e1e; 
@@ -100,14 +95,12 @@
         .type-purchase { color: #2ecc71; }
         .type-sale { color: #3498db; }
         
-        tr[draggable="true"] { cursor: grab; }
-        tr[draggable="true"]:hover { background: #252525; }
-        tr.dragging { opacity: 0.3; background: #333 !important; }
+        .loading-text { color: #aaa; padding: 20px; text-align: center; }
     </style>
 </head>
 <body>
 
-    <h2>Учёт товаров</h2>
+    <h2>Учёт товаров (Облачное сохранение)</h2>
 
     <div class="top-container">
         <div class="stats">
@@ -116,7 +109,6 @@
             <div class="card"><div>Прибыль</div><h3 id="total-profit">0 ₽</h3></div>
         </div>
 
-        <!-- Калькулятор процентов -->
         <div class="calc-card">
             <div class="calc-title">Калькулятор % (Скидка)</div>
             <div class="calc-inputs">
@@ -151,31 +143,63 @@
                 </tr>
             </thead>
             <tbody id="table-body">
-                <!-- Строки добавляются через JS -->
+                <tr><td colspan="5" class="loading-text">Подключение к облаку...</td></tr>
             </tbody>
         </table>
     </div>
 
+    <!-- Подключаем официальные библиотеки Google Firebase -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+
     <script>
+        // --- НАСТРОЙКА ОБЛАКА ---
+        // ВСТАВЬТЕ СЮДА ВАШ КОНФИГ ИЗ ШАГА 1 (Замените пример ниже):
+        const firebaseConfig = {
+            apiKey: "ХХХХХХХХХХХХХХХХХХХХХХ",
+            authDomain: "://firebaseapp.com",
+            projectId: "your-app",
+            storageBucket: "://appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:1234:web:abcd"
+        };
+
+        // Инициализация базы данных
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
         let items = [];
 
-        // Исправленная математика: строгое вычитание процента
+        // Калькулятор процентов
         function calculatePercent() {
             const price = parseFloat(document.getElementById('calcPrice').value) || 0;
             const percent = parseFloat(document.getElementById('calcPercent').value) || 0;
-            
             if (price > 0) {
-                // Всегда берем процент как положительное число для вычитания
-                const absolutePercent = Math.abs(percent);
-                const discount = (price * absolutePercent) / 100;
-                const total = price - discount;
-                
-                document.getElementById('calcResult').style.color = '#e74c3c'; // Красный цвет текста для скидки
-                document.getElementById('calcResult').innerText = `Итог: ${total.toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
+                const discount = (price * Math.abs(percent)) / 100;
+                document.getElementById('calcResult').innerText = `Итог: ${(price - discount).toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
             } else {
                 document.getElementById('calcResult').innerText = 'Итог: 0 ₽';
             }
         }
+
+        // Автоматическое получение данных из облака в реальном времени
+        db.collection("products").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
+            items = [];
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                items.push({
+                    docId: doc.id, // ID документа в базе для удаления
+                    name: data.name,
+                    price: data.price,
+                    type: data.type,
+                    time: data.time
+                });
+            });
+            render();
+        }, (error) => {
+            console.error("Ошибка базы данных: ", error);
+            document.getElementById('table-body').innerHTML = `<tr><td colspan="5" class="loading-text" style="color:#e74c3c">Ошибка подключения. Проверьте настройки правил в Firebase.</td></tr>`;
+        });
 
         function render() {
             const tableBody = document.getElementById('table-body');
@@ -184,21 +208,22 @@
             let spent = 0;
             let sold = 0;
 
-            items.forEach((item, index) => {
-                if (item.type === 'Покупка') {
-                    spent += item.price;
-                } else {
-                    sold += item.price;
-                }
+            if (items.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Товаров пока нет</td></tr>';
+            }
+
+            items.forEach((item) => {
+                if (item.type === 'Покупка') spent += item.price;
+                else sold += item.price;
 
                 tableBody.innerHTML += `
-                    <tr draggable="true" data-index="${index}">
+                    <tr>
                         <td>${item.name}</td>
                         <td class="${item.type === 'Покупка' ? 'type-purchase' : 'type-sale'}">${item.type}</td>
                         <td style="color: #888; font-size: 14px;">${item.time}</td>
                         <td>${item.price.toLocaleString('ru-RU')} ₽</td>
                         <td>
-                            <button class="delete-btn" onclick="deleteItem(${item.id})">Удалить</button>
+                            <button class="delete-btn" onclick="deleteItem('${item.docId}')">Удалить</button>
                         </td>
                     </tr>
                 `;
@@ -206,13 +231,10 @@
 
             document.getElementById('total-spent').innerText = `${spent.toLocaleString('ru-RU')} ₽`;
             document.getElementById('total-sold').innerText = `${sold.toLocaleString('ru-RU')} ₽`;
-            
-            const profit = sold - spent;
-            document.getElementById('total-profit').innerText = `${profit.toLocaleString('ru-RU')} ₽`;
-
-            initDragAndDrop();
+            document.getElementById('total-profit').innerText = `${(sold - spent).toLocaleString('ru-RU')} ₽`;
         }
 
+        // Добавление товара НАПРЯМУЮ в облако
         function addItem() {
             const nameInput = document.getElementById('itemName');
             const priceInput = document.getElementById('itemPrice');
@@ -226,57 +248,26 @@
             const now = new Date();
             const timeString = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-            const newItem = {
-                id: Date.now(), 
+            // Отправляем объект в Firebase
+            db.collection("products").add({
                 name: nameInput.value,
                 price: parseFloat(priceInput.value),
                 type: typeSelect.value,
-                time: timeString
-            };
-
-            items.push(newItem);
-            render();
-
-            nameInput.value = '';
-            priceInput.value = '';
+                time: timeString,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() // Нужен для правильной сортировки
+            })
+            .then(() => {
+                nameInput.value = '';
+                priceInput.value = '';
+            })
+            .catch((error) => alert("Ошибка сохранения: " + error));
         }
 
-        window.deleteItem = function(id) {
-            items = items.filter(item => item.id !== id);
-            render();
-        }
-
-        function initDragAndDrop() {
-            const rows = document.querySelectorAll('#table-body tr');
-            let dragSrcIndex = null;
-
-            rows.forEach(row => {
-                row.addEventListener('dragstart', function() {
-                    dragSrcIndex = this.getAttribute('data-index');
-                    this.classList.add('dragging');
-                });
-
-                row.addEventListener('dragover', function(e) {
-                    e.preventDefault();
-                });
-
-                row.addEventListener('drop', function(e) {
-                    e.preventDefault();
-                    const targetIndex = this.getAttribute('data-index');
-                    
-                    if (dragSrcIndex !== null && dragSrcIndex !== targetIndex) {
-                        const draggedItem = items[dragSrcIndex];
-                        items.splice(dragSrcIndex, 1);
-                        items.splice(targetIndex, 0, draggedItem);
-                        render();
-                    }
-                });
-
-                row.addEventListener('dragend', function() {
-                    this.classList.remove('dragging');
-                });
-            });
+        // Удаление товара НАПРЯМУЮ из облака
+        window.deleteItem = function(docId) {
+            db.collection("products").doc(docId).delete()
+            .catch((error) => alert("Ошибка удаления: " + error));
         }
     </script>
-</body>
-</html>
+
+    
