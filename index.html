@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Учёт товаров (Облако)</title>
+    <title>Учёт товаров</title>
     <style>
         body { 
             margin: 0;
@@ -49,7 +49,16 @@
         .calc-inputs input { width: 80px; }
         .calc-result { margin-top: 10px; font-size: 15px; color: #e74c3c; font-weight: bold; min-height: 18px; }
 
-        .form-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .controls-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .form-group { display: flex; gap: 10px; flex-wrap: wrap; }
         
         input, select { 
             background: #1e1e1e; 
@@ -94,13 +103,11 @@
         
         .type-purchase { color: #2ecc71; }
         .type-sale { color: #3498db; }
-        
-        .loading-text { color: #aaa; padding: 20px; text-align: center; }
     </style>
 </head>
 <body>
 
-    <h2>Учёт товаров (Облачное сохранение)</h2>
+    <h2>Учёт товаров</h2>
 
     <div class="top-container">
         <div class="stats">
@@ -121,14 +128,16 @@
         </div>
     </div>
 
-    <div class="form-group">
-        <input type="text" id="itemName" placeholder="Название товара">
-        <input type="number" id="itemPrice" placeholder="Цена (₽)">
-        <select id="itemType">
-            <option value="Покупка">Покупка</option>
-            <option value="Продажа">Продажа</option>
-        </select>
-        <button onclick="addItem()">Добавить</button>
+    <div class="controls-group">
+        <div class="form-group">
+            <input type="text" id="itemName" placeholder="Название товара">
+            <input type="number" id="itemPrice" placeholder="Цена (₽)">
+            <select id="itemType">
+                <option value="Покупка">Покупка</option>
+                <option value="Продажа">Продажа</option>
+            </select>
+            <button onclick="addItem()">Добавить</button>
+        </div>
     </div>
 
     <div class="table-container">
@@ -143,87 +152,66 @@
                 </tr>
             </thead>
             <tbody id="table-body">
-                <tr><td colspan="5" class="loading-text">Подключение к облаку...</td></tr>
+                <!-- Строки добавляются через JS -->
             </tbody>
         </table>
     </div>
 
-    <!-- Подключаем официальные библиотеки Google Firebase -->
-    <script src="https://gstatic.com"></script>
-    <script src="https://gstatic.com"></script>
-
     <script>
-        // --- НАСТРОЙКА ОБЛАКА ---
-        // ВСТАВЬТЕ СЮДА ВАШ КОНФИГ ИЗ ШАГА 1 (Замените пример ниже):
-        const firebaseConfig = {
-            apiKey: "ХХХХХХХХХХХХХХХХХХХХХХ",
-            authDomain: "://firebaseapp.com",
-            projectId: "your-app",
-            storageBucket: "://appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:1234:web:abcd"
-        };
-
-        // Инициализация базы данных
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-
+        // Безопасная инициализация: сбрасывает старый кэш, если он поврежден
         let items = [];
+        try {
+            const savedData = localStorage.getItem('accounting_items');
+            if (savedData) {
+                const parsed = JSON.parse(savedData);
+                if (Array.isArray(parsed)) {
+                    items = parsed;
+                }
+            }
+        } catch (e) {
+            items = [];
+            localStorage.setItem('accounting_items', JSON.stringify([]));
+        }
 
-        // Калькулятор процентов
         function calculatePercent() {
             const price = parseFloat(document.getElementById('calcPrice').value) || 0;
             const percent = parseFloat(document.getElementById('calcPercent').value) || 0;
+            
             if (price > 0) {
                 const discount = (price * Math.abs(percent)) / 100;
-                document.getElementById('calcResult').innerText = `Итог: ${(price - discount).toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
+                const total = price - discount;
+                document.getElementById('calcResult').innerText = `Итог: ${total.toLocaleString('ru-RU')} ₽ (скидка: -${discount.toLocaleString('ru-RU')} ₽)`;
             } else {
                 document.getElementById('calcResult').innerText = 'Итог: 0 ₽';
             }
         }
 
-        // Автоматическое получение данных из облака в реальном времени
-        db.collection("products").orderBy("timestamp", "asc").onSnapshot((snapshot) => {
-            items = [];
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                items.push({
-                    docId: doc.id, // ID документа в базе для удаления
-                    name: data.name,
-                    price: data.price,
-                    type: data.type,
-                    time: data.time
-                });
-            });
-            render();
-        }, (error) => {
-            console.error("Ошибка базы данных: ", error);
-            document.getElementById('table-body').innerHTML = `<tr><td colspan="5" class="loading-text" style="color:#e74c3c">Ошибка подключения. Проверьте настройки правил в Firebase.</td></tr>`;
-        });
+        function saveToStorage() {
+            localStorage.setItem('accounting_items', JSON.stringify(items));
+        }
 
         function render() {
             const tableBody = document.getElementById('table-body');
+            if (!tableBody) return;
             tableBody.innerHTML = '';
 
             let spent = 0;
             let sold = 0;
 
-            if (items.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="5" class="loading-text">Товаров пока нет</td></tr>';
-            }
-
             items.forEach((item) => {
+                if (!item || typeof item.price !== 'number') return;
+
                 if (item.type === 'Покупка') spent += item.price;
                 else sold += item.price;
 
                 tableBody.innerHTML += `
                     <tr>
-                        <td>${item.name}</td>
-                        <td class="${item.type === 'Покупка' ? 'type-purchase' : 'type-sale'}">${item.type}</td>
-                        <td style="color: #888; font-size: 14px;">${item.time}</td>
+                        <td>${item.name || ''}</td>
+                        <td class="${item.type === 'Покупка' ? 'type-purchase' : 'type-sale'}">${item.type || ''}</td>
+                        <td style="color: #888; font-size: 14px;">${item.time || ''}</td>
                         <td>${item.price.toLocaleString('ru-RU')} ₽</td>
                         <td>
-                            <button class="delete-btn" onclick="deleteItem('${item.docId}')">Удалить</button>
+                            <button class="delete-btn" onclick="deleteItem(${item.id})">Удалить</button>
                         </td>
                     </tr>
                 `;
@@ -234,7 +222,6 @@
             document.getElementById('total-profit').innerText = `${(sold - spent).toLocaleString('ru-RU')} ₽`;
         }
 
-        // Добавление товара НАПРЯМУЮ в облако
         function addItem() {
             const nameInput = document.getElementById('itemName');
             const priceInput = document.getElementById('itemPrice');
@@ -248,26 +235,29 @@
             const now = new Date();
             const timeString = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-            // Отправляем объект в Firebase
-            db.collection("products").add({
+            items.push({
+                id: Date.now(), 
                 name: nameInput.value,
                 price: parseFloat(priceInput.value),
                 type: typeSelect.value,
-                time: timeString,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp() // Нужен для правильной сортировки
-            })
-            .then(() => {
-                nameInput.value = '';
-                priceInput.value = '';
-            })
-            .catch((error) => alert("Ошибка сохранения: " + error));
+                time: timeString
+            });
+
+            saveToStorage();
+            render();
+
+            nameInput.value = '';
+            priceInput.value = '';
         }
 
-        // Удаление товара НАПРЯМУЮ из облака
-        window.deleteItem = function(docId) {
-            db.collection("products").doc(docId).delete()
-            .catch((error) => alert("Ошибка удаления: " + error));
+        window.deleteItem = function(id) {
+            items = items.filter(item => item && item.id !== id);
+            saveToStorage();
+            render();
         }
+
+        // Запуск приложения
+        render();
     </script>
-
-    
+</body>
+</html>
